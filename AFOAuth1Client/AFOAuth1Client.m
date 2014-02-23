@@ -227,6 +227,24 @@ static inline NSString * AFHMACSHA1Signature(NSURLRequest *request, NSString *co
     }
 }
 
+- (NSString *)OAuthSignatureForMethod:(NSString *)method
+                                  URL:(NSURL *)url
+                           parameters:(NSDictionary *)parameters
+                                token:(AFOAuth1Token *)token
+{
+    NSMutableURLRequest *request = [self superRequestWithMethod:@"GET" URL: url parameters:parameters];
+    [request setHTTPMethod:method];
+    
+    NSString *tokenSecret = token ? token.secret : nil;
+    
+    switch (self.signatureMethod) {
+        case AFHMACSHA1SignatureMethod:
+            return AFHMACSHA1Signature(request, self.secret, tokenSecret, self.stringEncoding);
+        default:
+            return nil;
+    }
+}
+
 - (NSString *)authorizationHeaderForMethod:(NSString*)method
                                       path:(NSString*)path
                                 parameters:(NSDictionary *)parameters
@@ -259,6 +277,41 @@ static inline NSString * AFHMACSHA1Signature(NSURLRequest *request, NSString *co
         [mutableComponents addObject:[NSString stringWithFormat:@"%@=\"%@\"", [subcomponents objectAtIndex:0], [subcomponents objectAtIndex:1]]];
     }
 
+    return [NSString stringWithFormat:kAFOAuth1AuthorizationFormatString, [mutableComponents componentsJoinedByString:@", "]];
+}
+
+- (NSString *)authorizationHeaderForMethod:(NSString*)method
+                                       URL:(NSURL*)url
+                                parameters:(NSDictionary *)parameters
+{
+    static NSString * const kAFOAuth1AuthorizationFormatString = @"OAuth %@";
+    
+    NSMutableDictionary *mutableParameters = parameters ? [parameters mutableCopy] : [NSMutableDictionary dictionary];
+    NSMutableDictionary *mutableAuthorizationParameters = [NSMutableDictionary dictionary];
+    
+    if (self.key && self.secret) {
+        [mutableAuthorizationParameters addEntriesFromDictionary:[self OAuthParameters]];
+        if (self.accessToken) {
+            [mutableAuthorizationParameters setValue:self.accessToken.key forKey:@"oauth_token"];
+        }
+    }
+    
+    [mutableParameters enumerateKeysAndObjectsUsingBlock:^(id key, id obj, BOOL *stop) {
+        if ([key isKindOfClass:[NSString class]] && [key hasPrefix:@"oauth_"]) {
+            [mutableAuthorizationParameters setValue:obj forKey:key];
+        }
+    }];
+    
+    [mutableParameters addEntriesFromDictionary:mutableAuthorizationParameters];
+    [mutableAuthorizationParameters setValue:[self OAuthSignatureForMethod:method URL: url parameters:mutableParameters token:self.accessToken] forKey:@"oauth_signature"];
+    
+    NSArray *sortedComponents = [[AFQueryStringFromParametersWithEncoding(mutableAuthorizationParameters, self.stringEncoding) componentsSeparatedByString:@"&"] sortedArrayUsingSelector:@selector(caseInsensitiveCompare:)];
+    NSMutableArray *mutableComponents = [NSMutableArray array];
+    for (NSString *component in sortedComponents) {
+        NSArray *subcomponents = [component componentsSeparatedByString:@"="];
+        [mutableComponents addObject:[NSString stringWithFormat:@"%@=\"%@\"", [subcomponents objectAtIndex:0], [subcomponents objectAtIndex:1]]];
+    }
+    
     return [NSString stringWithFormat:kAFOAuth1AuthorizationFormatString, [mutableComponents componentsJoinedByString:@", "]];
 }
 
@@ -316,6 +369,90 @@ static inline NSString * AFHMACSHA1Signature(NSURLRequest *request, NSString *co
             failure(error);
         }
     }];
+}
+
+- (void)authorizeUsingOAuthWithURL:(NSURL *)requestTokenURL
+              userAuthorizationURL:(NSURL *)userAuthorizationURL
+                       callbackURL:(NSURL *)callbackURL
+                    accessTokenURL:(NSURL *)accessTokenURL
+                      accessMethod:(NSString *)accessMethod
+                             scope:(NSString *)scope
+                           success:(void (^)(AFOAuth1Token *accessToken, id responseObject))success
+                           failure:(void (^)(NSError *error))failure
+{
+    [self acquireOAuthRequestTokenWithURL: requestTokenURL callbackURL:callbackURL accessMethod:(NSString *)accessMethod scope:scope success:^(AFOAuth1Token *requestToken, id responseObject) {
+        __block AFOAuth1Token *currentRequestToken = requestToken;
+        
+        self.applicationLaunchNotificationObserver = [[NSNotificationCenter defaultCenter] addObserverForName:kAFApplicationLaunchedWithURLNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *notification) {
+            NSURL *url = [[notification userInfo] valueForKey:kAFApplicationLaunchOptionsURLKey];
+            
+            currentRequestToken.verifier = [AFParametersFromQueryString([url query]) valueForKey:@"oauth_verifier"];
+            
+            [self acquireOAuthAccessTokenWithURL: accessTokenURL requestToken:currentRequestToken accessMethod:accessMethod success:^(AFOAuth1Token * accessToken, id responseObject) {
+                self.applicationLaunchNotificationObserver = nil;
+                if (accessToken) {
+                    self.accessToken = accessToken;
+                    
+                    if (success) {
+                        success(accessToken, responseObject);
+                    }
+                } else {
+                    if (failure) {
+                        failure(nil);
+                    }
+                }
+            } failure:^(NSError *error) {
+                self.applicationLaunchNotificationObserver = nil;
+                if (failure) {
+                    failure(error);
+                }
+            }];
+        }];
+        
+        NSMutableDictionary *parameters = [NSMutableDictionary dictionary];
+        [parameters setValue:requestToken.key forKey:@"oauth_token"];
+        NSMutableURLRequest *request = [self superRequestWithMethod:@"GET" URL: userAuthorizationURL parameters:parameters];
+        [request setHTTPShouldHandleCookies:NO];
+#if __IPHONE_OS_VERSION_MIN_REQUIRED
+        [[UIApplication sharedApplication] openURL:[request URL]];
+#else
+        [[NSWorkspace sharedWorkspace] openURL:[request URL]];
+#endif
+    } failure:^(NSError *error) {
+        if (failure) {
+            failure(error);
+        }
+    }];
+}
+
+- (void)acquireOAuthRequestTokenWithURL:(NSURL *)requestTokenURL
+                            callbackURL:(NSURL *)callbackURL
+                           accessMethod:(NSString *)accessMethod
+                                  scope:(NSString *)scope
+                                success:(void (^)(AFOAuth1Token *requestToken, id responseObject))success
+                                failure:(void (^)(NSError *error))failure
+{
+    NSMutableDictionary *parameters = [[self OAuthParameters] mutableCopy];
+    [parameters setValue:[callbackURL absoluteString] forKey:@"oauth_callback"];
+    if (scope && !self.accessToken) {
+        [parameters setValue:scope forKey:@"scope"];
+    }
+    
+    NSMutableURLRequest *request = [self superRequestWithMethod:accessMethod URL: requestTokenURL parameters:parameters];
+    [request setHTTPBody:nil];
+    
+    AFHTTPRequestOperation *operation = [self HTTPRequestOperationWithRequest:request success:^(AFHTTPRequestOperation *operation, id responseObject) {
+        if (success) {
+            AFOAuth1Token *accessToken = [[AFOAuth1Token alloc] initWithQueryString:operation.responseString];
+            success(accessToken, responseObject);
+        }
+    } failure:^(AFHTTPRequestOperation *operation, NSError *error) {
+        if (failure) {
+            failure(error);
+        }
+    }];
+    
+    [self enqueueHTTPRequestOperation:operation];
 }
 
 - (void)acquireOAuthRequestTokenWithPath:(NSString *)path
@@ -376,6 +513,34 @@ static inline NSString * AFHMACSHA1Signature(NSURLRequest *request, NSString *co
     [self enqueueHTTPRequestOperation:operation];
 }
 
+- (void)acquireOAuthAccessTokenWithURL:(NSURL *)url
+                          requestToken:(AFOAuth1Token *)requestToken
+                          accessMethod:(NSString *)accessMethod
+                               success:(void (^)(AFOAuth1Token *accessToken, id responseObject))success
+                               failure:(void (^)(NSError *error))failure
+{
+    self.accessToken = requestToken;
+    
+    NSMutableDictionary *parameters = [[self OAuthParameters] mutableCopy];
+    [parameters setValue:requestToken.key forKey:@"oauth_token"];
+    [parameters setValue:requestToken.verifier forKey:@"oauth_verifier"];
+    
+    NSMutableURLRequest *request = [self superRequestWithMethod:accessMethod URL: url parameters:parameters];
+    
+    AFHTTPRequestOperation *operation = [self HTTPRequestOperationWithRequest:request success:^(AFHTTPRequestOperation *operation, id responseObject) {
+        if (success) {
+            AFOAuth1Token *accessToken = [[AFOAuth1Token alloc] initWithQueryString:operation.responseString];
+            success(accessToken, responseObject);
+        }
+    } failure:^(AFHTTPRequestOperation *operation, NSError *error) {
+        if (failure) {
+            failure(error);
+        }
+    }];
+    
+    [self enqueueHTTPRequestOperation:operation];
+}
+
 #pragma mark - AFHTTPClient
 
 - (NSMutableURLRequest *)requestWithMethod:(NSString *)method
@@ -392,6 +557,81 @@ static inline NSString * AFHMACSHA1Signature(NSURLRequest *request, NSString *co
     NSMutableURLRequest *request = [super requestWithMethod:method path:path parameters:mutableParameters];
 
     [request setValue:[self authorizationHeaderForMethod:method path:path parameters:parameters] forHTTPHeaderField:@"Authorization"];
+    [request setHTTPShouldHandleCookies:NO];
+    
+    return request;
+}
+
+- (NSMutableURLRequest *)superRequestWithMethod:(NSString *)method
+                                            URL:(NSURL *)url
+                                     parameters:(NSDictionary *)parameters
+{
+    NSParameterAssert(method);
+    NSParameterAssert(url);
+    
+//    if (!path) {
+//        path = @"";
+//    }
+    
+//    NSURL *url = [NSURL URLWithString:path relativeToURL:self.baseURL];
+	NSMutableURLRequest *request = [[NSMutableURLRequest alloc] initWithURL:url];
+    [request setHTTPMethod:method];
+    
+    if ([self respondsToSelector: @selector(defaultHeaders)])
+    {
+        [request setAllHTTPHeaderFields: [self performSelector: @selector(defaultHeaders)]];
+//        [request setAllHTTPHeaderFields:self.defaultHeaders];
+    }
+    
+    if (parameters) {
+        if ([method isEqualToString:@"GET"] || [method isEqualToString:@"HEAD"] || [method isEqualToString:@"DELETE"]) {
+            url = [NSURL URLWithString:[[url absoluteString] stringByAppendingFormat:[[url path] rangeOfString:@"?"].location == NSNotFound ? @"?%@" : @"&%@", AFQueryStringFromParametersWithEncoding(parameters, self.stringEncoding)]];
+            [request setURL:url];
+        } else {
+            NSString *charset = (__bridge NSString *)CFStringConvertEncodingToIANACharSetName(CFStringConvertNSStringEncodingToEncoding(self.stringEncoding));
+            NSError *error = nil;
+            
+            switch (self.parameterEncoding) {
+                case AFFormURLParameterEncoding:;
+                    [request setValue:[NSString stringWithFormat:@"application/x-www-form-urlencoded; charset=%@", charset] forHTTPHeaderField:@"Content-Type"];
+                    [request setHTTPBody:[AFQueryStringFromParametersWithEncoding(parameters, self.stringEncoding) dataUsingEncoding:self.stringEncoding]];
+                    break;
+                case AFJSONParameterEncoding:;
+                    [request setValue:[NSString stringWithFormat:@"application/json; charset=%@", charset] forHTTPHeaderField:@"Content-Type"];
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wassign-enum"
+                    [request setHTTPBody:[NSJSONSerialization dataWithJSONObject:parameters options:0 error:&error]];
+#pragma clang diagnostic pop
+                    break;
+                case AFPropertyListParameterEncoding:;
+                    [request setValue:[NSString stringWithFormat:@"application/x-plist; charset=%@", charset] forHTTPHeaderField:@"Content-Type"];
+                    [request setHTTPBody:[NSPropertyListSerialization dataWithPropertyList:parameters format:NSPropertyListXMLFormat_v1_0 options:0 error:&error]];
+                    break;
+            }
+            
+            if (error) {
+                NSLog(@"%@ %@: %@", [self class], NSStringFromSelector(_cmd), error);
+            }
+        }
+    }
+    
+	return request;
+}
+
+- (NSMutableURLRequest *)requestWithMethod:(NSString *)method
+                                       URL:(NSURL *)url
+                                parameters:(NSDictionary *)parameters
+{
+    NSMutableDictionary *mutableParameters = [parameters mutableCopy];
+    for (NSString *key in parameters) {
+        if ([key hasPrefix:@"oauth_"]) {
+            [mutableParameters removeObjectForKey:key];
+        }
+    }
+    
+    NSMutableURLRequest *request = [self superRequestWithMethod:method URL: url parameters:mutableParameters];
+    
+    [request setValue:[self authorizationHeaderForMethod:method URL: url parameters:parameters] forHTTPHeaderField:@"Authorization"];
     [request setHTTPShouldHandleCookies:NO];
     
     return request;

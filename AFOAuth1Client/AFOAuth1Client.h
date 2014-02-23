@@ -57,6 +57,7 @@ typedef enum {
  */
 @property (nonatomic, strong) NSString *oauthAccessMethod;
 
+
 ///---------------------
 /// @name Initialization
 ///---------------------
@@ -85,6 +86,19 @@ typedef enum {
                                         failure:(void (^)(NSError *error))failure;
 
 /**
+ 
+ */
+- (void)authorizeUsingOAuthWithURL:(NSURL *)requestTokenURL
+              userAuthorizationURL:(NSURL *)userAuthorizationURL
+                       callbackURL:(NSURL *)callbackURL
+                    accessTokenURL:(NSURL *)accessTokenURL
+                      accessMethod:(NSString *)accessMethod
+                             scope:(NSString *)scope
+                           success:(void (^)(AFOAuth1Token *accessToken, id responseObject))success
+                           failure:(void (^)(NSError *error))failure;
+
+
+/**
 
  */
 - (void)acquireOAuthRequestTokenWithPath:(NSString *)path
@@ -95,6 +109,16 @@ typedef enum {
                                  failure:(void (^)(NSError *error))failure;
 
 /**
+ 
+ */
+- (void)acquireOAuthRequestTokenWithURL:(NSURL *)requestTokenURL
+                            callbackURL:(NSURL *)callbackURL
+                           accessMethod:(NSString *)accessMethod
+                                  scope:(NSString *)scope
+                                success:(void (^)(AFOAuth1Token *requestToken, id responseObject))success
+                                failure:(void (^)(NSError *error))failure;
+
+/**
 
  */
 - (void)acquireOAuthAccessTokenWithPath:(NSString *)path
@@ -103,6 +127,14 @@ typedef enum {
                                 success:(void (^)(AFOAuth1Token *accessToken, id responseObject))success
                                 failure:(void (^)(NSError *error))failure;
 
+/**
+ 
+ */
+- (void)acquireOAuthAccessTokenWithURL:(NSURL *)url
+                          requestToken:(AFOAuth1Token *)requestToken
+                          accessMethod:(NSString *)accessMethod
+                               success:(void (^)(AFOAuth1Token *accessToken, id responseObject))success
+                               failure:(void (^)(NSError *error))failure;
 @end
 
 ///----------------
