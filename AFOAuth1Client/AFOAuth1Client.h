@@ -135,6 +135,14 @@ typedef enum {
                           accessMethod:(NSString *)accessMethod
                                success:(void (^)(AFOAuth1Token *accessToken, id responseObject))success
                                failure:(void (^)(NSError *error))failure;
+
+/**
+ 
+ */
+- (NSMutableURLRequest *)requestWithMethod:(NSString *)method
+                                       URL:(NSURL *)url
+                                parameters:(NSDictionary *)parameters;
+
 @end
 
 ///----------------
