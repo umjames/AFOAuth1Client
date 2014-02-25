@@ -21,6 +21,7 @@
 // THE SOFTWARE.
 
 #import "AFHTTPClient.h"
+#import "AFOAuth1ClientDelegate.h"
 
 typedef enum {
     AFHMACSHA1SignatureMethod = 1,
@@ -56,6 +57,11 @@ typedef enum {
 
  */
 @property (nonatomic, strong) NSString *oauthAccessMethod;
+
+/**
+ 
+ */
+@property (nonatomic, weak) id<AFOAuth1ClientDelegate>  delegate;
 
 
 ///---------------------

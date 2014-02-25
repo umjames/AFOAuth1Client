@@ -10,6 +10,9 @@
       <FileRef
          location = "group:AFOAuth1Client.m">
       </FileRef>
+      <FileRef
+         location = "group:AFOAuth1ClientDelegate.h">
+      </FileRef>
    </Group>
    <FileRef
       location = "group:Twitter iOS Example Client/Twitter iOS Example Client.xcodeproj">

@@ -157,6 +157,7 @@ static inline NSString * AFHMACSHA1Signature(NSURLRequest *request, NSString *co
 @synthesize accessToken = _accessToken;
 @synthesize oauthAccessMethod = _oauthAccessMethod;
 @synthesize applicationLaunchNotificationObserver = _applicationLaunchNotificationObserver;
+@synthesize delegate = _delegate;
 
 - (id)initWithBaseURL:(NSURL *)url
                   key:(NSString *)clientID
@@ -176,6 +177,8 @@ static inline NSString * AFHMACSHA1Signature(NSURLRequest *request, NSString *co
     self.signatureMethod = AFHMACSHA1SignatureMethod;
 
     self.oauthAccessMethod = @"GET";
+    
+    self.delegate = nil;
 
     return self;
 }
@@ -359,11 +362,19 @@ static inline NSString * AFHMACSHA1Signature(NSURLRequest *request, NSString *co
         [parameters setValue:requestToken.key forKey:@"oauth_token"];
         NSMutableURLRequest *request = [super requestWithMethod:@"GET" path:userAuthorizationPath parameters:parameters];
         [request setHTTPShouldHandleCookies:NO];
+        
+        if (self.delegate && [self.delegate respondsToSelector: @selector(AFOAuth1Client:presentUserAuthorizationURLRequest:)])
+        {
+            [self.delegate AFOAuth1Client: self presentUserAuthorizationURLRequest: request];
+        }
+        else
+        {
 #if __IPHONE_OS_VERSION_MIN_REQUIRED
-        [[UIApplication sharedApplication] openURL:[request URL]];
+            [[UIApplication sharedApplication] openURL:[request URL]];
 #else
-        [[NSWorkspace sharedWorkspace] openURL:[request URL]];
+            [[NSWorkspace sharedWorkspace] openURL:[request URL]];
 #endif
+        }
     } failure:^(NSError *error) {
         if (failure) {
             failure(error);
@@ -413,11 +424,19 @@ static inline NSString * AFHMACSHA1Signature(NSURLRequest *request, NSString *co
         [parameters setValue:requestToken.key forKey:@"oauth_token"];
         NSMutableURLRequest *request = [self superRequestWithMethod:@"GET" URL: userAuthorizationURL parameters:parameters];
         [request setHTTPShouldHandleCookies:NO];
+
+        if (self.delegate && [self.delegate respondsToSelector: @selector(AFOAuth1Client:presentUserAuthorizationURLRequest:)])
+        {
+            [self.delegate AFOAuth1Client: self presentUserAuthorizationURLRequest: request];
+        }
+        else
+        {
 #if __IPHONE_OS_VERSION_MIN_REQUIRED
-        [[UIApplication sharedApplication] openURL:[request URL]];
+            [[UIApplication sharedApplication] openURL:[request URL]];
 #else
-        [[NSWorkspace sharedWorkspace] openURL:[request URL]];
+            [[NSWorkspace sharedWorkspace] openURL:[request URL]];
 #endif
+        }
     } failure:^(NSError *error) {
         if (failure) {
             failure(error);
