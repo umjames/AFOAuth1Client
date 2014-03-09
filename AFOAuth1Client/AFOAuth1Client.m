@@ -147,6 +147,8 @@ static inline NSString * AFHMACSHA1Signature(NSURLRequest *request, NSString *co
 - (NSString *)authorizationHeaderForMethod:(NSString*)method
                                       path:(NSString*)path
                                 parameters:(NSDictionary *)parameters;
+
+- (void)allowForURLRequestCustomization: (NSMutableURLRequest*)URLRequest;
 @end
 
 @implementation AFOAuth1Client
@@ -245,6 +247,14 @@ static inline NSString * AFHMACSHA1Signature(NSURLRequest *request, NSString *co
             return AFHMACSHA1Signature(request, self.secret, tokenSecret, self.stringEncoding);
         default:
             return nil;
+    }
+}
+
+- (void)allowForURLRequestCustomization: (NSMutableURLRequest*)URLRequest
+{
+    if (self.delegate)
+    {
+        [self.delegate AFOAuth1Client: self willUseURLRequest: URLRequest];
     }
 }
 
@@ -362,6 +372,7 @@ static inline NSString * AFHMACSHA1Signature(NSURLRequest *request, NSString *co
         [parameters setValue:requestToken.key forKey:@"oauth_token"];
         NSMutableURLRequest *request = [super requestWithMethod:@"GET" path:userAuthorizationPath parameters:parameters];
         [request setHTTPShouldHandleCookies:NO];
+        [self allowForURLRequestCustomization: request];
         
         if (self.delegate && [self.delegate respondsToSelector: @selector(AFOAuth1Client:presentUserAuthorizationURLRequest:)])
         {
@@ -424,6 +435,8 @@ static inline NSString * AFHMACSHA1Signature(NSURLRequest *request, NSString *co
         [parameters setValue:requestToken.key forKey:@"oauth_token"];
         NSMutableURLRequest *request = [self superRequestWithMethod:@"GET" URL: userAuthorizationURL parameters:parameters];
         [request setHTTPShouldHandleCookies:NO];
+        
+        [self allowForURLRequestCustomization: request];
 
         if (self.delegate && [self.delegate respondsToSelector: @selector(AFOAuth1Client:presentUserAuthorizationURLRequest:)])
         {
@@ -459,6 +472,7 @@ static inline NSString * AFHMACSHA1Signature(NSURLRequest *request, NSString *co
     
     NSMutableURLRequest *request = [self requestWithMethod:accessMethod URL: requestTokenURL parameters:parameters];
     [request setHTTPBody:nil];
+    [self allowForURLRequestCustomization: request];
     
     AFHTTPRequestOperation *operation = [self HTTPRequestOperationWithRequest:request success:^(AFHTTPRequestOperation *operation, id responseObject) {
         if (success) {
@@ -489,6 +503,7 @@ static inline NSString * AFHMACSHA1Signature(NSURLRequest *request, NSString *co
 
     NSMutableURLRequest *request = [self requestWithMethod:accessMethod path:path parameters:parameters];
     [request setHTTPBody:nil];
+    [self allowForURLRequestCustomization: request];
 
     AFHTTPRequestOperation *operation = [self HTTPRequestOperationWithRequest:request success:^(AFHTTPRequestOperation *operation, id responseObject) {
         if (success) {
@@ -517,6 +532,7 @@ static inline NSString * AFHMACSHA1Signature(NSURLRequest *request, NSString *co
     [parameters setValue:requestToken.verifier forKey:@"oauth_verifier"];
 
     NSMutableURLRequest *request = [self requestWithMethod:accessMethod path:path parameters:parameters];
+    [self allowForURLRequestCustomization: request];
 
     AFHTTPRequestOperation *operation = [self HTTPRequestOperationWithRequest:request success:^(AFHTTPRequestOperation *operation, id responseObject) {
         if (success) {
@@ -545,6 +561,7 @@ static inline NSString * AFHMACSHA1Signature(NSURLRequest *request, NSString *co
     [parameters setValue:requestToken.verifier forKey:@"oauth_verifier"];
     
     NSMutableURLRequest *request = [self requestWithMethod:accessMethod URL: url parameters:parameters];
+    [self allowForURLRequestCustomization: request];
     
     AFHTTPRequestOperation *operation = [self HTTPRequestOperationWithRequest:request success:^(AFHTTPRequestOperation *operation, id responseObject) {
         if (success) {

@@ -14,5 +14,6 @@
 
 @optional
 - (void)AFOAuth1Client: (AFOAuth1Client*)client presentUserAuthorizationURLRequest: (NSURLRequest*)userAuthorizationURLRequest;
+- (void)AFOAuth1Client: (AFOAuth1Client*)client willUseURLRequest: (NSMutableURLRequest*)URLRequest;
 
 @end
