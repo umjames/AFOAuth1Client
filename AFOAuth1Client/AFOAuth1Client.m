@@ -254,7 +254,10 @@ static inline NSString * AFHMACSHA1Signature(NSURLRequest *request, NSString *co
 {
     if (self.delegate)
     {
-        [self.delegate AFOAuth1Client: self willUseURLRequest: URLRequest];
+        if ([self.delegate respondsToSelector: @selector(AFOAuth1Client:willUseURLRequest:)])
+        {
+            [self.delegate AFOAuth1Client: self willUseURLRequest: URLRequest];
+        }
     }
 }
 
